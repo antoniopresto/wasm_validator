@@ -4,65 +4,60 @@
  * validation failures.
  */
 export type ValidationErrorCode =
-  | 'invalid_schema'
-  | 'additional_items'
-  | 'additional_properties'
-  | 'any_of_mismatch'
-  | 'regex_backtrack_limit'
-  | 'const_mismatch'
-  | 'no_match_in_contains'
-  | 'invalid_content_encoding'
-  | 'invalid_media_type'
-  | 'custom_error'
-  | 'enum_mismatch'
-  | 'exclusive_max'
-  | 'exclusive_min'
-  | 'disallowed_value'
-  | 'format_mismatch'
-  | 'invalid_utf8'
-  | 'too_large'
-  | 'too_many_items'
-  | 'too_long'
-  | 'too_many_properties'
-  | 'too_small'
-  | 'too_few_items'
-  | 'too_short'
-  | 'too_few_properties'
-  | 'not_a_multiple'
-  | 'negated_schema_match'
-  | 'one_of_multiple_matches'
-  | 'one_of_no_match'
-  | 'pattern_mismatch'
-  | 'invalid_property_name'
-  | 'missing_property'
-  | 'invalid_type'
-  | 'unevaluated_items'
-  | 'unevaluated_properties'
-  | 'duplicate_items'
-  | 'schema_reference_error';
+    | 'invalid_schema'
+    | 'additional_items'
+    | 'additional_properties'
+    | 'any_of_mismatch'
+    | 'regex_backtrack_limit'
+    | 'const_mismatch'
+    | 'no_match_in_contains'
+    | 'invalid_content_encoding'
+    | 'invalid_media_type'
+    | 'custom_error'
+    | 'enum_mismatch'
+    | 'exclusive_max'
+    | 'exclusive_min'
+    | 'disallowed_value'
+    | 'format_mismatch'
+    | 'invalid_utf8'
+    | 'too_large'
+    | 'too_many_items'
+    | 'too_long'
+    | 'too_many_properties'
+    | 'too_small'
+    | 'too_few_items'
+    | 'too_short'
+    | 'too_few_properties'
+    | 'not_a_multiple'
+    | 'negated_schema_match'
+    | 'one_of_multiple_matches'
+    | 'one_of_no_match'
+    | 'pattern_mismatch'
+    | 'invalid_property_name'
+    | 'missing_property'
+    | 'invalid_type'
+    | 'unevaluated_items'
+    | 'unevaluated_properties'
+    | 'duplicate_items'
+    | 'schema_reference_error';
 
 /**
  * Describes the structure of a single validation error.
- * When validation fails, an array of these objects is thrown.
  */
 export interface ValidationIssue {
   /**
    * A JSON Pointer (RFC 6901) to the location in the instance where the error occurred.
-   * An empty string indicates the root of the instance.
    * @example "/profile/age"
    */
   path: string;
   /**
-   * A human-readable description of the validation error. If `mask_values` was set
-   * to true during validation, this message will be redacted to avoid exposing
-   * potentially sensitive data.
+   * A human-readable description of the validation error. This message may be
+   * redacted if `mask_values` was set to true.
    * @example "17 is less than the minimum of 18"
-   * @example "value is shorter than 3 characters"
    */
   message: string;
   /**
    * A stable, machine-readable code representing the specific type of validation error.
-   * This is useful for programmatic error handling.
    */
   code: ValidationErrorCode;
 }
@@ -73,50 +68,62 @@ export interface ValidationIssue {
 export type JSONSchema = Record<string, any>;
 
 /**
- * The main validation function exported from the WebAssembly module.
- * It validates a JSON object (`instance`) against a JSON Schema (`schema`).
- *
- * If validation is successful, the function returns normally (void).
- * If validation fails, the function throws an array of `ValidationIssue` objects.
- *
- * @param schema The JSON Schema object to validate against.
- * @param instance The JSON object instance to be validated.
- * @param mask_values If true, potentially sensitive data in the instance will be
- * redacted from the error messages. Defaults to `false`.
- * @throws {ValidationIssue[]} An array of validation issues if the instance is invalid.
- * @example
- * ```javascript
- * import { validate } from 'wasm-validator';
- *
- * const schema = { type: 'string', minLength: 5 };
- * const instance = "test";
- *
- * try {
- * validate(schema, instance);
- * console.log("Validation successful!");
- * } catch (errors) {
- * console.error("Validation failed:", errors);
- * // errors is an array of ValidationIssue objects
- * // e.g., [{ path: '', message: '"test" is shorter than 5 characters', code: 'too_short' }]
- * }
- * ```
+ * An Error subclass that is thrown when validation fails.
+ * It contains an array of `ValidationIssue` objects.
  */
-export function validate<T extends any>(
-  schema: JSONSchema,
-  instance: T,
-  mask_values?: boolean,
-): T;
-
-export class ValidationError {
-  issues: ValidationIssue[]
+export class ValidationError extends Error {
+  /** An array of detailed validation issues. */
+  issues: ValidationIssue[];
+  constructor(issues: ValidationIssue[]);
 }
 
-export function isValidationError(
-  value: any,
-): value is ValidationError;
+/**
+ * A stateful, performant validator that pre-compiles a JSON schema.
+ * Use this class when you need to validate multiple instances against the same schema.
+ */
+export class WasmValidator {
+  /**
+   * Creates and compiles a new validator instance.
+   * @param schema The JSON Schema object to validate against.
+   * @param mask_values If true, potentially sensitive data will be redacted from error messages. Defaults to `false`.
+   * @throws {ValidationError} Throws if the schema itself is invalid.
+   */
+  constructor(schema: JSONSchema, mask_values?: boolean);
 
-export function assertValidationError(
-  value: any,
-): asserts value is ValidationError;
+  /**
+   * Validates a JSON object instance against the pre-compiled schema.
+   * @param instance The JSON instance to validate.
+   * @returns The validated instance if validation is successful.
+   * @throws {ValidationError} Throws if the instance is invalid.
+   */
+  validate<T extends any>(instance: T): T;
+}
 
+/**
+ * A stateless validation function for one-off use.
+ * This is less performant for repeated use as it compiles the schema on every call.
+ *
+ * @param schema The JSON Schema object to validate against.
+ * @param instance The JSON instance to validate.
+ * @param mask_values If true, potentially sensitive data will be redacted from error messages. Defaults to `false`.
+ * @returns The validated instance if validation is successful.
+ * @throws {ValidationError} Throws if the instance is invalid.
+ */
+export function validate<T extends any>(
+    schema: JSONSchema,
+    instance: T,
+    mask_values?: boolean
+): T;
 
+/**
+ * Type guard to check if a value is a `ValidationError`.
+ * @param value The value to check.
+ * @returns True if the value is a `ValidationError`.
+ */
+export function isValidationError(value: any): value is ValidationError;
+
+/**
+ * Asserts that a value is a `ValidationError`, throwing an error otherwise.
+ * @param value The value to check.
+ */
+export function assertValidationError(value: any): asserts value is ValidationError;
